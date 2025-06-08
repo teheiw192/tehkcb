@@ -13,6 +13,7 @@ import json
 import datetime
 from .parser import parse_word, parse_image, parse_xlsx
 import shutil
+import traceback
 
 @register("kcbxt", "teheiw192", "课程表提醒插件", "1.0.0", "https://github.com/teheiw192/kcbxt")
 class KCBXTPlugin(Star):
@@ -67,31 +68,39 @@ class KCBXTPlugin(Star):
         ocr_api_key = getattr(self, 'config', {}).get('ocr_api_key')
         for comp in event.get_messages():
             if isinstance(comp, (File, Image)):
-                file_url = await comp.get_file()
+                file_url = comp.file
                 file_name = getattr(comp, "name", "") or os.path.basename(file_url)
                 ext = os.path.splitext(file_name)[-1].lower()
                 user_id = event.get_sender_id()
                 save_path = os.path.join(self.data_dir, f"{user_id}{ext}")
-                await download_file(file_url, save_path)
-                if ext in [".docx", ".doc"]:
-                    courses = parse_word(save_path)
-                elif ext in [".xlsx"]:
-                    courses = parse_xlsx(save_path)
-                elif ext in [".jpg", ".jpeg", ".png", ".bmp"]:
-                    if not ocr_api_url:
-                        await event.send(event.plain_result("请在插件后台配置图片识别API接口！"))
+                try:
+                    # 下载或复制文件到本地
+                    await download_file(file_url, save_path)
+                    
+                    if ext in [".docx", ".doc"]:
+                        courses = parse_word(save_path)
+                    elif ext in [".xlsx"]:
+                        courses = parse_xlsx(save_path)
+                    elif ext in [".jpg", ".jpeg", ".png", ".bmp"]:
+                        if not ocr_api_url:
+                            await event.send(event.plain_result("请在插件后台配置图片识别API接口！"))
+                            return
+                        courses = await parse_image(save_path, ocr_api_url, ocr_api_key)
+                    else:
+                        await event.send(event.plain_result("暂不支持该文件类型，仅支持Word、Excel或图片格式的课程表！"))
                         return
-                    courses = await parse_image(save_path, ocr_api_url, ocr_api_key)
-                else:
-                    await event.send(event.plain_result("暂不支持该文件类型，仅支持Word、Excel或图片格式的课程表！"))
-                    return
-                data = {
-                    "courses": courses,
-                    "unified_msg_origin": event.unified_msg_origin
-                }
-                with open(os.path.join(self.data_dir, f"{user_id}.json"), "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                await event.send(event.plain_result("课程表解析并保存成功！"))
+                    data = {
+                        "courses": courses,
+                        "unified_msg_origin": event.unified_msg_origin
+                    }
+                    with open(os.path.join(self.data_dir, f"{user_id}.json"), "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    await event.send(event.plain_result("课程表解析并保存成功！"))
+                except Exception as e:
+                    error_msg = f"处理课程表时发生错误: {e}"
+                    await event.send(event.plain_result(f":( {error_msg}")) # 用户友好提示
+                    import traceback
+                    logger.error(f"[KCBXT] {error_msg}\n{traceback.format_exc()}") # 详细日志用于调试
                 return
         pass
 
@@ -144,11 +153,11 @@ async def download_file(url, save_path):
         import aiohttp
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
+                resp.raise_for_status()
                 with open(save_path, "wb") as f:
                     f.write(await resp.read())
     else:
-        # 直接复制本地文件
         if os.path.exists(url):
             shutil.copy(url, save_path)
         else:
-            raise FileNotFoundError(f"本地文件不存在: {url}") 
+            raise FileNotFoundError(f"文件处理失败：本地文件不存在或无法直接访问: {url}。可能需要配置对应平台的API来下载文件。") 
