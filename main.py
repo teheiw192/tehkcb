@@ -66,8 +66,8 @@ class KCBXTPlugin(Star):
         ocr_api_url = getattr(self, 'config', {}).get('ocr_api_url')
         ocr_api_key = getattr(self, 'config', {}).get('ocr_api_key')
         for comp in event.get_messages():
-            if isinstance(comp, (File, Image)) and getattr(comp, "file", None):
-                file_url = comp.file
+            if isinstance(comp, (File, Image)):
+                file_url = await comp.get_file()
                 file_name = getattr(comp, "name", "") or os.path.basename(file_url)
                 ext = os.path.splitext(file_name)[-1].lower()
                 user_id = event.get_sender_id()
@@ -83,7 +83,7 @@ class KCBXTPlugin(Star):
                         return
                     courses = await parse_image(save_path, ocr_api_url, ocr_api_key)
                 else:
-                    await event.send([event.plain_result("暂不支持该文件类型，仅支持Word或图片格式的课程表！")])
+                    await event.send([event.plain_result("暂不支持该文件类型，仅支持Word、Excel或图片格式的课程表！")])
                     return
                 data = {
                     "courses": courses,
