@@ -11,7 +11,8 @@ import asyncio
 import os
 import json
 import datetime
-from .parser import parse_word, parse_image
+from .parser import parse_word, parse_image, parse_xlsx
+import shutil
 
 @register("kcbxt", "teheiw192", "课程表提醒插件", "1.0.0", "https://github.com/teheiw192/kcbxt")
 class KCBXTPlugin(Star):
@@ -74,6 +75,8 @@ class KCBXTPlugin(Star):
                 await download_file(file_url, save_path)
                 if ext in [".docx", ".doc"]:
                     courses = parse_word(save_path)
+                elif ext in [".xlsx"]:
+                    courses = parse_xlsx(save_path)
                 elif ext in [".jpg", ".jpeg", ".png", ".bmp"]:
                     if not ocr_api_url:
                         await event.send([event.plain_result("请在插件后台配置图片识别API接口！")])
@@ -137,9 +140,15 @@ def get_class_time_from_str(time_str):
     return None
 
 async def download_file(url, save_path):
-    # 简单下载器，支持http/https
-    import aiohttp
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            with open(save_path, "wb") as f:
-                f.write(await resp.read()) 
+    if url.startswith("http://") or url.startswith("https://"):
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                with open(save_path, "wb") as f:
+                    f.write(await resp.read())
+    else:
+        # 直接复制本地文件
+        if os.path.exists(url):
+            shutil.copy(url, save_path)
+        else:
+            raise FileNotFoundError(f"本地文件不存在: {url}") 

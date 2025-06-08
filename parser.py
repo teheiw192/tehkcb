@@ -7,6 +7,7 @@ import aiohttp
 import re
 import os
 import json
+import openpyxl
 
 def parse_word(file_path: str) -> List[Dict]:
     """解析Word课程表，返回课程信息列表"""
@@ -53,5 +54,23 @@ async def parse_image(file_path: str, ocr_api_url: str, ocr_api_key: str = None)
                 "time": m.group(2),
                 "location": m.group(3),
                 "teacher": m.group(4)
+            })
+    return result
+
+def parse_xlsx(file_path: str) -> List[Dict]:
+    """解析xlsx课程表，返回课程信息列表"""
+    result = []
+    wb = openpyxl.load_workbook(file_path)
+    ws = wb.active
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i == 0:
+            continue  # 跳过表头
+        cells = [str(cell).strip() if cell is not None else '' for cell in row]
+        if len(cells) >= 4:
+            result.append({
+                "course": cells[0],
+                "time": cells[1],
+                "location": cells[2],
+                "teacher": cells[3]
             })
     return result 
