@@ -11,9 +11,12 @@ import asyncio
 import os
 import json
 import datetime
-from .parser import parse_word, parse_image, parse_xlsx
+from .parser import parse_word, parse_image, parse_xlsx, parse_text_schedule
 import shutil
 import traceback
+
+# 引入 logger
+from astrbot.logger import logger
 
 @register("kcbxt", "teheiw192", "课程表提醒插件", "1.0.0", "https://github.com/teheiw192/kcbxt")
 class KCBXTPlugin(Star):
@@ -62,7 +65,7 @@ class KCBXTPlugin(Star):
 
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE | EventMessageType.PRIVATE_MESSAGE)
     async def on_file_or_image(self, event: AstrMessageEvent, *args, **kwargs):
-        """监听群聊和私聊消息，自动识别Word/图片并解析课程表"""
+        """监听群聊和私聊消息，自动识别Word/图片/Excel并解析课程表"""
         from astrbot.api.message_components import File, Image
         ocr_api_url = getattr(self, 'config', {}).get('ocr_api_url')
         ocr_api_key = getattr(self, 'config', {}).get('ocr_api_key')
@@ -99,10 +102,39 @@ class KCBXTPlugin(Star):
                 except Exception as e:
                     error_msg = f"处理课程表时发生错误: {e}"
                     await event.send(event.plain_result(f":( {error_msg}")) # 用户友好提示
-                    import traceback
                     logger.error(f"[KCBXT] {error_msg}\n{traceback.format_exc()}") # 详细日志用于调试
                 return
         pass
+
+    @filter.event_message_type(EventMessageType.PLAIN_MESSAGE)
+    async def on_plain_message(self, event: AstrMessageEvent, *args, **kwargs):
+        """监听纯文本消息，尝试解析课程表文字"""
+        text_content = event.get_plain_text()
+        if not text_content:
+            return
+        
+        # 检查是否是指令消息，避免重复处理
+        # 由于已经有了 @filter.command 的处理，这里可以假设纯文本消息不是指令
+
+        # 尝试解析课程表文字
+        user_id = event.get_sender_id()
+        try:
+            courses = parse_text_schedule(text_content)
+            if courses:
+                data = {
+                    "courses": courses,
+                    "unified_msg_origin": event.unified_msg_origin
+                }
+                with open(os.path.join(self.data_dir, f"{user_id}.json"), "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                await event.send(event.plain_result("课程表文字解析并保存成功！请使用 \"kcbxt\" 命令查看。" + "(注意：纯文本解析可能不完全准确，请核对。)"))
+            else:
+                await event.send(event.plain_result("未能从文本中识别出课程表信息，请尝试以下格式：课程名 时间 地点 老师"))
+        except Exception as e:
+            error_msg = f"处理课程表文字时发生错误: {e}"
+            await event.send(event.plain_result(f":( {error_msg}"))
+            logger.error(f"[KCBXT] {error_msg}\n{traceback.format_exc()}")
+        return
 
     async def reminder_loop(self):
         """定时检查并提醒所有用户"""

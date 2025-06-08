@@ -73,4 +73,26 @@ def parse_xlsx(file_path: str) -> List[Dict]:
                 "location": cells[2],
                 "teacher": cells[3]
             })
+    return result
+
+def parse_text_schedule(text_content: str) -> List[Dict]:
+    """解析纯文本课程表，返回课程信息列表"""
+    result = []
+    lines = [line.strip() for line in text_content.split('\n') if line.strip()]
+    for line in lines:
+        # 尝试用正则提取课程名、时间、地点、老师
+        # 示例格式：课程名 时间 地点 老师
+        # 例如：高等数学 周一第1-2节 教学楼101 张老师
+        m = re.match(r'(.+?)\s+(周.第.+?节)\s+(.+?)\s+(.+)', line)
+        if m:
+            result.append({
+                "course": m.group(1),
+                "time": m.group(2),
+                "location": m.group(3),
+                "teacher": m.group(4)
+            })
+        else:
+            # 如果不能完全匹配，尝试更宽松的匹配，例如只匹配课程名和时间，或者提示用户格式不正确
+            # 这里可以根据实际需求调整，目前是忽略不匹配的行
+            pass
     return result 
