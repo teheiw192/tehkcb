@@ -1,4 +1,2 @@
 python-docx
-pytesseract
-Pillow
-APScheduler 
+aiohttp 

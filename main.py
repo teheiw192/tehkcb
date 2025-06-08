@@ -62,6 +62,8 @@ class KCBXTPlugin(Star):
     async def on_file_or_image(self, event: AstrMessageEvent):
         """监听群聊和私聊消息，自动识别Word/图片并解析课程表"""
         from astrbot.api.message_components import File, Image
+        ocr_api_url = getattr(self, 'config', {}).get('ocr_api_url')
+        ocr_api_key = getattr(self, 'config', {}).get('ocr_api_key')
         for comp in event.get_messages():
             if isinstance(comp, (File, Image)) and getattr(comp, "file", None):
                 file_url = comp.file
@@ -69,16 +71,17 @@ class KCBXTPlugin(Star):
                 ext = os.path.splitext(file_name)[-1].lower()
                 user_id = event.get_sender_id()
                 save_path = os.path.join(self.data_dir, f"{user_id}{ext}")
-                # 下载文件
                 await download_file(file_url, save_path)
                 if ext in [".docx", ".doc"]:
                     courses = parse_word(save_path)
                 elif ext in [".jpg", ".jpeg", ".png", ".bmp"]:
-                    courses = parse_image(save_path)
+                    if not ocr_api_url:
+                        await event.send([event.plain_result("请在插件后台配置图片识别API接口！")])
+                        return
+                    courses = await parse_image(save_path, ocr_api_url, ocr_api_key)
                 else:
                     await event.send([event.plain_result("暂不支持该文件类型，仅支持Word或图片格式的课程表！")])
                     return
-                # 保存为json，包含 unified_msg_origin
                 data = {
                     "courses": courses,
                     "unified_msg_origin": event.unified_msg_origin

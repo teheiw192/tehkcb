@@ -3,9 +3,10 @@
 """
 from typing import List, Dict
 import docx
-from PIL import Image
-import pytesseract
+import aiohttp
 import re
+import os
+import json
 
 def parse_word(file_path: str) -> List[Dict]:
     """解析Word课程表，返回课程信息列表"""
@@ -24,11 +25,22 @@ def parse_word(file_path: str) -> List[Dict]:
                 })
     return result
 
-def parse_image(file_path: str) -> List[Dict]:
-    """解析图片课程表，返回课程信息列表"""
+async def parse_image(file_path: str, ocr_api_url: str, ocr_api_key: str = None) -> List[Dict]:
+    """通过API接口识别图片课程表，返回课程信息列表"""
     result = []
-    img = Image.open(file_path)
-    text = pytesseract.image_to_string(img, lang='chi_sim+eng')
+    # 读取图片为二进制
+    with open(file_path, "rb") as f:
+        img_bytes = f.read()
+    headers = {}
+    if ocr_api_key:
+        headers["Authorization"] = ocr_api_key
+    data = aiohttp.FormData()
+    data.add_field('image', img_bytes, filename=os.path.basename(file_path), content_type='application/octet-stream')
+    async with aiohttp.ClientSession() as session:
+        async with session.post(ocr_api_url, headers=headers, data=data) as resp:
+            resp_json = await resp.json()
+            # 假设API返回格式为{"text": "..."} 或 {"data": {"text": "..."}}
+            text = resp_json.get("text") or resp_json.get("data", {}).get("text", "")
     # 简单正则分割行，假设每行一个课程
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     for line in lines:

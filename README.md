@@ -4,6 +4,8 @@
 
 本插件适用于 AstrBot，支持用户上传课程表（Word文档或图片），自动解析并保存。插件会在每天上课前五分钟自动提醒用户当天要上的课程、地点、老师等信息。支持多用户独立课程表。
 
+支持自定义图片识别API（如百度OCR、腾讯OCR等），在插件后台配置API KEY和URL，无需本地安装Tesseract。
+
 ## 安装方法
 
 1. 将本插件目录放入 AstrBot 的 `data/plugins/` 目录下。
@@ -16,9 +18,7 @@
 ## 依赖
 
 - python-docx
-- pytesseract
-- Pillow
-- APScheduler（可选）
+- aiohttp
 
 安装依赖：
 ```bash
@@ -27,7 +27,9 @@ pip install -r requirements.txt
 
 ## 配置方法
 
-无需特殊配置，上传课程表后自动生效。
+在 AstrBot 插件后台配置图片识别API接口信息，例如：
+- `ocr_api_url`: 你的OCR接口URL
+- `ocr_api_key`: 你的API KEY（如有）
 
 ## 使用说明
 
