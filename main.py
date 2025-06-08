@@ -79,11 +79,11 @@ class KCBXTPlugin(Star):
                     courses = parse_xlsx(save_path)
                 elif ext in [".jpg", ".jpeg", ".png", ".bmp"]:
                     if not ocr_api_url:
-                        await event.send([event.plain_result("请在插件后台配置图片识别API接口！")])
+                        await event.send(event.plain_result("请在插件后台配置图片识别API接口！"))
                         return
                     courses = await parse_image(save_path, ocr_api_url, ocr_api_key)
                 else:
-                    await event.send([event.plain_result("暂不支持该文件类型，仅支持Word、Excel或图片格式的课程表！")])
+                    await event.send(event.plain_result("暂不支持该文件类型，仅支持Word、Excel或图片格式的课程表！"))
                     return
                 data = {
                     "courses": courses,
@@ -91,7 +91,7 @@ class KCBXTPlugin(Star):
                 }
                 with open(os.path.join(self.data_dir, f"{user_id}.json"), "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
-                await event.send([event.plain_result("课程表解析并保存成功！")])
+                await event.send(event.plain_result("课程表解析并保存成功！"))
                 return
         pass
 
