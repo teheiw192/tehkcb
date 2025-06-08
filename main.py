@@ -60,7 +60,7 @@ class KCBXTPlugin(Star):
         yield event.plain_result(msg)
 
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE | EventMessageType.PRIVATE_MESSAGE)
-    async def on_file_or_image(self, event: AstrMessageEvent):
+    async def on_file_or_image(self, event: AstrMessageEvent, *args, **kwargs):
         """监听群聊和私聊消息，自动识别Word/图片并解析课程表"""
         from astrbot.api.message_components import File, Image
         ocr_api_url = getattr(self, 'config', {}).get('ocr_api_url')
