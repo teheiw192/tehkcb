@@ -1,0 +1,12 @@
+{
+  "ocr_api_url": {
+    "description": "图片识别API接口URL",
+    "type": "string",
+    "hint": "如百度OCR、腾讯OCR等API的URL"
+  },
+  "ocr_api_key": {
+    "description": "API KEY",
+    "type": "string",
+    "hint": "如有需要请填写API KEY"
+  }
+} 
