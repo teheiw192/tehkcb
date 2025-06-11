@@ -3,6 +3,7 @@
 - 支持用户上传课程表（Word文档或图片），自动解析并保存。
 - 每天上课前五分钟自动提醒用户当天要上的课程、地点、老师。
 - 支持多用户独立课程表。
+- 支持本地图库管理功能。
 """
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.event.filter import EventMessageType
@@ -12,8 +13,10 @@ import os
 import json
 import datetime
 from .parser import parse_word, parse_image, parse_xlsx, parse_text_schedule
+from .gallery import Gallery, GalleryManager
 import shutil
 import traceback
+import random
 
 # 引入 logger
 from astrbot.logger import logger
@@ -23,7 +26,24 @@ class KCBXTPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.data_dir = os.path.join(os.path.dirname(__file__), "data")
+        self.gallery_dir = os.path.join(self.data_dir, "galleries")
+        self.gallery_info_file = os.path.join(self.data_dir, "gallery_info.json")
         os.makedirs(self.data_dir, exist_ok=True)
+        os.makedirs(self.gallery_dir, exist_ok=True)
+
+        # 初始化图库管理器
+        self.default_gallery_info = {
+            "name": "local",
+            "path": os.path.join(self.gallery_dir, "local"),
+            "creator_id": "127001",
+            "creator_name": "local",
+            "capacity": 200,
+            "compress": True,
+            "duplicate": True,
+            "fuzzy": False,
+        }
+        self.gm = GalleryManager(self.gallery_dir, self.gallery_info_file, self.default_gallery_info)
+
         # 启动定时提醒任务
         asyncio.create_task(self.reminder_loop())
 
@@ -161,6 +181,166 @@ class KCBXTPlugin(Star):
                             delta = (class_dt - now).total_seconds()
                             if 0 < delta <= 300 and unified_msg_origin:
                                 await self.context.send_message(unified_msg_origin, [f"上课提醒：{c['course']} {c['time']} {c['location']} {c['teacher']}"])
+
+    # 添加图库相关功能
+    @filter.command("图库帮助")
+    async def gallery_help(self, event: AstrMessageEvent):
+        """显示图库帮助信息"""
+        help_text = """【图库管理命令】
+/图库帮助 - 显示此帮助信息
+/存图 <图库名> [序号] - 保存图片到指定图库
+/删图 <图库名> [序号] - 删除图库中的图片
+/查看 <图库名> [序号] - 查看图库中的图片
+/图库列表 - 查看所有图库
+/图库详情 <图库名> - 查看图库详细信息
+/精准匹配词 - 查看精准匹配词
+/模糊匹配词 - 查看模糊匹配词
+/模糊匹配 <图库名> - 将图库切换到模糊匹配模式
+/精准匹配 <图库名> - 将图库切换到精准匹配模式
+/添加匹配词 <图库名> <匹配词> - 为图库添加匹配词
+/删除匹配词 <图库名> <匹配词> - 删除图库的匹配词
+/设置容量 <图库名> <容量> - 设置图库容量
+/开启压缩 <图库名> - 开启图库压缩
+/关闭压缩 <图库名> - 关闭图库压缩
+/开启去重 <图库名> - 开启图库去重
+/关闭去重 <图库名> - 关闭图库去重
+/去重 <图库名> - 去除图库中的重复图片"""
+        yield event.plain_result(help_text)
+
+    @filter.command("存图")
+    async def add_image(self, event: AstrMessageEvent):
+        """保存图片到图库"""
+        args = event.get_plain_text().split()
+        if len(args) < 2:
+            yield event.plain_result("请指定图库名称")
+            return
+
+        gallery_name = args[1]
+        gallery = self.gm.get_gallery(gallery_name)
+        if not gallery:
+            try:
+                gallery = self.gm.create_gallery(
+                    gallery_name,
+                    event.get_sender_id(),
+                    event.get_sender_name()
+                )
+            except Exception as e:
+                yield event.plain_result(str(e))
+                return
+
+        # 获取图片
+        for comp in event.get_messages():
+            if hasattr(comp, "file"):
+                try:
+                    # 下载图片
+                    image_data = await self._download_file(comp.file)
+                    if not image_data:
+                        yield event.plain_result("图片下载失败")
+                        return
+
+                    # 添加图片到图库
+                    result = gallery.add_image(image_data)
+                    yield event.plain_result(result)
+                except Exception as e:
+                    yield event.plain_result(f"保存图片失败: {str(e)}")
+                return
+
+        yield event.plain_result("请发送要保存的图片")
+
+    @filter.command("删图")
+    async def delete_image(self, event: AstrMessageEvent):
+        """删除图库中的图片"""
+        args = event.get_plain_text().split()
+        if len(args) < 2:
+            yield event.plain_result("请指定图库名称")
+            return
+
+        gallery_name = args[1]
+        gallery = self.gm.get_gallery(gallery_name)
+        if not gallery:
+            yield event.plain_result(f"图库【{gallery_name}】不存在")
+            return
+
+        index = int(args[2]) if len(args) > 2 else None
+        result = gallery.delete_image(index)
+        yield event.plain_result(result)
+
+    @filter.command("查看")
+    async def view_image(self, event: AstrMessageEvent):
+        """查看图库中的图片"""
+        args = event.get_plain_text().split()
+        if len(args) < 2:
+            yield event.plain_result("请指定图库名称")
+            return
+
+        gallery_name = args[1]
+        gallery = self.gm.get_gallery(gallery_name)
+        if not gallery:
+            yield event.plain_result(f"图库【{gallery_name}】不存在")
+            return
+
+        index = int(args[2]) if len(args) > 2 else None
+        image_path = gallery.get_image(index)
+        if image_path:
+            yield event.image_result(image_path)
+        else:
+            yield event.plain_result("未找到图片")
+
+    @filter.command("图库列表")
+    async def list_galleries(self, event: AstrMessageEvent):
+        """列出所有图库"""
+        if not self.gm.galleries:
+            yield event.plain_result("暂无图库")
+            return
+
+        msg = "【图库列表】\n"
+        for gallery in self.gm.galleries.values():
+            msg += f"图库名：{gallery.name}\n"
+            msg += f"创建者：{gallery.creator_name}\n"
+            msg += f"图片数量：{len(os.listdir(gallery.path))}\n"
+            msg += f"容量：{gallery.capacity}\n"
+            msg += "-------------------\n"
+        yield event.plain_result(msg)
+
+    @filter.command("图库详情")
+    async def gallery_details(self, event: AstrMessageEvent):
+        """查看图库详细信息"""
+        args = event.get_plain_text().split()
+        if len(args) < 2:
+            yield event.plain_result("请指定图库名称")
+            return
+
+        gallery_name = args[1]
+        gallery = self.gm.get_gallery(gallery_name)
+        if not gallery:
+            yield event.plain_result(f"图库【{gallery_name}】不存在")
+            return
+
+        info = gallery.get_info()
+        msg = f"【图库详情】\n"
+        msg += f"图库名：{info['name']}\n"
+        msg += f"创建者：{info['creator_name']}\n"
+        msg += f"图片数量：{info['image_count']}\n"
+        msg += f"容量：{info['capacity']}\n"
+        msg += f"压缩：{'开启' if info['compress'] else '关闭'}\n"
+        msg += f"去重：{'开启' if info['duplicate'] else '关闭'}\n"
+        msg += f"匹配模式：{'模糊' if info['fuzzy'] else '精准'}\n"
+        msg += f"关键词：{', '.join(info['keywords'])}"
+        yield event.plain_result(msg)
+
+    async def _download_file(self, url: str) -> bytes:
+        """下载文件"""
+        if url.startswith("http://") or url.startswith("https://"):
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    resp.raise_for_status()
+                    return await resp.read()
+        else:
+            if os.path.exists(url):
+                with open(url, "rb") as f:
+                    return f.read()
+            raise FileNotFoundError(f"文件不存在: {url}")
 
 def get_today_weekday():
     # 返回如"周一"
