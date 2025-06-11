@@ -1,7 +1,7 @@
 """
 课程表提醒插件（kcbxt）
 - 支持用户上传课程表（Word文档或图片），自动解析并保存。
-- 每天上课前五分钟自动提醒用户当天要上的课程、地点、老师。
+- 每天上课前十分钟自动提醒用户当天要上的课程、地点、老师。
 - 支持多用户独立课程表。
 - 支持本地图库管理功能。
 """
@@ -17,6 +17,8 @@ from .gallery import Gallery, GalleryManager
 import shutil
 import traceback
 import random
+from PIL import Image
+import io
 
 # 引入 logger
 from astrbot.logger import logger
@@ -134,7 +136,8 @@ class KCBXTPlugin(Star):
             return
         
         # 检查是否是指令消息，避免重复处理
-        # 由于已经有了 @filter.command 的处理，这里可以假设纯文本消息不是指令
+        if text_content.startswith("/"):
+            return
 
         # 尝试解析课程表文字
         user_id = event.get_sender_id()
@@ -179,10 +182,10 @@ class KCBXTPlugin(Star):
                         if class_time:
                             class_dt = now.replace(hour=class_time[0], minute=class_time[1], second=0, microsecond=0)
                             delta = (class_dt - now).total_seconds()
-                            if 0 < delta <= 300 and unified_msg_origin:
+                            if 0 < delta <= 600 and unified_msg_origin:  # 提前10分钟提醒
                                 await self.context.send_message(unified_msg_origin, [f"上课提醒：{c['course']} {c['time']} {c['location']} {c['teacher']}"])
 
-    # 添加图库相关功能
+    # 图库相关功能
     @filter.command("图库帮助")
     async def gallery_help(self, event: AstrMessageEvent):
         """显示图库帮助信息"""
